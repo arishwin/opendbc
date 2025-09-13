@@ -61,7 +61,7 @@ def create_accel_command(packer, set_speed, acc_rdy, enabled, is_lead, des_speed
     "IS_LEAD": is_lead,
     "IS_ACCEL": (not is_braking) and enabled,
     "IS_DECEL": is_braking and enabled,
-    "SET_ME_1_2": acc_rdy, #rdy buton
+    "SET_ME_1_2": acc_rdy, #rdy button
     "SET_ME_1": 1,
     "SET_0_WHEN_ENGAGE": not enabled,
     "SET_1_WHEN_ENGAGE": enabled,
