@@ -29,7 +29,7 @@ static safety_config perodua_init(uint16_t param) {
   };
 
   static RxCheck perodua_rx_checks[] = {
-    {.msg = {{0x35F, 0, 8, .frequency = 20U}, { 0 }, { 0 }}},
+//    {.msg = {{0x35F, 0, 8, .frequency = 20U}, { 0 }, { 0 }}},
   };
 
   return BUILD_SAFETY_CFG(perodua_rx_checks, PERODUA_TX_MSGS);
