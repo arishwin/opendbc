@@ -29,7 +29,8 @@ static void perodua_rx_hook(const CANPacket_t *msg) {
       pcm_cruise_check(true);
     }
   }
-
+  vehicle_moving = true;
+  controls_allowed = true;
   UNUSED(msg);
 }
 
