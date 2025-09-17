@@ -116,7 +116,9 @@ class CarController(CarControllerBase):
   def update(self, CC, CS, now_nanos):
     can_sends = []
 
-    enabled = CS.out.cruiseState.enabled
+    # Use openpilot engagement for gating
+    lat_active = CC.latActive
+    long_active = CC.longActive
     actuators = CC.actuators
     lead_visible = CC.hudControl.leadVisible
     rlane_visible = CC.hudControl.rightLaneVisible
@@ -150,37 +152,17 @@ class CarController(CarControllerBase):
     if (self.frame % 2) == 0:
       # allow stock LDP passthrough
       self.stockLdw = CS.laneDepartWarning
-      if self.stockLdw and not enabled:
+      if self.stockLdw and not lat_active:
         apply_steer = -CS.ldpSteerV
 
-      steer_req = (enabled or self.stockLdw) and CS.lkas_latch and not CS.lkaDisabled
+      steer_req = (lat_active or self.stockLdw) and CS.lkas_latch and not CS.lkaDisabled
       can_sends.append(create_can_steer_command(self.packer, apply_steer, steer_req, (self.frame / 2) % 16))
 
     # CAN controlled longitudinal
     if (self.frame % 5) == 0:
 
-      # check if need to revert to stock acc
-      if enabled and CS.out.vEgo > 10: # 36kmh
-        if CS.stock_acc_engaged:
-          self.using_stock_acc = True
-      else:
-        if enabled:
-          # spam engage until stock ACC engages
-          can_sends.append(perodua_buttons(self.packer, 0, 1))
-
-      # check if need to revert to bukapilot acc
-      if CS.out.vEgo < 8.3: # 30kmh
-        self.using_stock_acc = False
-
-      # set stock acc follow speed
-      if enabled and self.using_stock_acc:
-        if CS.out.cruiseState.speedCluster - (CS.stock_acc_set_speed // 3.6) > 0.3:
-          can_sends.append(perodua_buttons(self.packer, 0, 1))
-        if (CS.stock_acc_set_speed // 3.6) - CS.out.cruiseState.speedCluster > 0.3:
-          can_sends.append(perodua_buttons(self.packer, 1, 0))
-
       # standstill logic
-      if enabled and apply_brake > 0 and CS.out.standstill:
+      if long_active and apply_brake > 0 and CS.out.standstill:
         if self.standstill_status == BrakingStatus.STANDSTILL_INIT:
           self.min_standstill_accel = apply_brake + 0.2
         apply_brake, self.standstill_status, self.prev_ts = standstill_brake(self.min_standstill_accel, self.prev_ts, ts, self.standstill_status)
@@ -192,13 +174,13 @@ class CarController(CarControllerBase):
       pump, brake_req, self.last_pump = psd_brake(apply_brake, self.last_pump)
 
       can_sends.append(create_accel_command(self.packer, CS.out.cruiseState.speedCluster,
-                       CS.out.cruiseState.available, enabled, lead_visible,
+                       True, long_active, lead_visible,
                        des_speed, apply_brake, pump, CS.distance_val))
 
       # Let stock AEB kick in only when system not engaged
-      aeb = not enabled and CS.aebV
-      can_sends.append(create_brake_command(self.packer, enabled, brake_req, pump, apply_brake, aeb))
-      can_sends.append(create_hud(self.packer, CS.out.cruiseState.available and CS.lkas_latch, enabled, llane_visible,
+      aeb = not long_active and CS.aebV
+      can_sends.append(create_brake_command(self.packer, long_active, brake_req, pump, apply_brake, aeb))
+      can_sends.append(create_hud(self.packer, CS.out.cruiseState.available and CS.lkas_latch, lat_active, llane_visible,
                                   rlane_visible, self.stockLdw, CS.out.stockFcw, CS.out.stockAeb, CS.frontDepartWarning,
                                   CS.stock_lkc_off, CS.stock_fcw_off))
 
