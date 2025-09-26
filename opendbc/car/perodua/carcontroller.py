@@ -16,7 +16,7 @@ PUMP_VALS = [0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1.0]
 PUMP_RESET_INTERVAL = 1.5
 PUMP_RESET_DURATION = 0.1
 
-BRAKE_M = 1.2
+BRAKE_M = 1.4
 
 
 class BrakingStatus:
@@ -89,6 +89,12 @@ def psd_brake(apply_brake, last_pump):
 
   return pump, brake_req, last_pump
 
+# 100hz rate_limit
+def rate_limit_positive_speed(x, last):
+  if x > last:
+    return min(x, last + 0.006)
+  else:
+    return x
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
@@ -113,16 +119,20 @@ class CarController(CarControllerBase):
     self.using_stock_acc = False
     self.fingerprint = CP.carFingerprint
 
+    self.last_des_speed = 0
+
   def update(self, CC, CS, now_nanos):
     can_sends = []
 
     # Use openpilot engagement for gating
+    enabled = CC.enabled
     lat_active = CC.latActive
     long_active = CC.longActive
     actuators = CC.actuators
     lead_visible = CC.hudControl.leadVisible
     rlane_visible = CC.hudControl.rightLaneVisible
     llane_visible = CC.hudControl.leftLaneVisible
+    pcm_cancel_cmd = CC.cruiseControl.cancel
 
     # steer
     steer_max_interp = interp(CS.out.vEgo, self.params.STEER_BP, self.params.STEER_LIM_TORQ)
@@ -139,7 +149,16 @@ class CarController(CarControllerBase):
     k = 0.3 + 0.06 * CS.out.vEgo
     des_speed = CS.out.vEgo + actuators.accel * k
     apply_brake = 0 if (CS.out.gasPressed or actuators.accel >= 0) else clip(abs(actuators.accel / BRAKE_M), 0., 1.25)
-    apply_brake = max(CS.stock_brake_mag * 0.85, apply_brake)
+    apply_brake = max(CS.stock_brake_mag * 0.6, apply_brake)
+
+    if apply_brake > 0:
+      self.last_des_speed = CS.out.vEgo
+    else:
+      self.last_des_speed = des_speed
+
+    # positive des_speed rate limit
+    if CS.out.vEgo > 8.33:
+      des_speed = rate_limit_positive_speed(des_speed, self.last_des_speed)
 
     # reduce max brake when below 10kmh to reduce jerk. TODO: more elegant way to do this?
     if CS.out.vEgo < 2.8:
@@ -160,6 +179,30 @@ class CarController(CarControllerBase):
 
     # CAN controlled longitudinal
     if (self.frame % 5) == 0:
+
+      # check if need to revert to stock acc
+      if enabled and CS.out.vEgo > 10: # 36kmh
+        if CS.stock_acc_engaged:
+          self.using_stock_acc = True
+      else:
+        if enabled:
+          # spam engage until stock ACC engages
+          can_sends.append(perodua_buttons(self.packer, 0, 1, 0))
+
+      # check if need to revert to bukapilot acc
+      if CS.out.vEgo < 8.3: # 30kmh
+        self.using_stock_acc = False
+
+      # set stock acc follow speed
+      if enabled and self.using_stock_acc:
+        if CS.out.cruiseState.speedCluster - (CS.stock_acc_set_speed // 3.6) > 0.3:
+          can_sends.append(perodua_buttons(self.packer, 0, 1, 0))
+        if (CS.stock_acc_set_speed // 3.6) - CS.out.cruiseState.speedCluster > 0.3:
+          can_sends.append(perodua_buttons(self.packer, 1, 0, 0))
+
+      # spam cancel if op cancel
+      if pcm_cancel_cmd:
+        can_sends.append(perodua_buttons(self.packer, 0, 0, 1))
 
       # standstill logic
       if long_active and apply_brake > 0 and CS.out.standstill:
