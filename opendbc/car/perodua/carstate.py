@@ -209,37 +209,8 @@ class CarState(CarStateBase):
     return ret
 
   @staticmethod
-  def get_can_parser(CP):
-    signals = [
-      # sig_name, sig_address, default
-      ("WHEEL_SPEED", 50),
-      ("TRANSMISSION", 30),
-      ("GAS_PEDAL", 60),
-      ("BRAKE", 100),
-      ("RIGHT_STALK", 33),
-      ("METER_CLUSTER", 0),
-      ("BSM", 0),
-      ("STEERING_MODULE", 100),
-      ("EPS_SHAFT_TORQUE", 40),
-      ("PCM_BUTTONS", 30),
-      ("GAS_PEDAL_2", 0),
-      ("BUTTONS", 50),
-    ]
-    return CANParser(DBC[CP.carFingerprint][Bus.pt], signals, 0)
-
-  @staticmethod
   def get_can_parsers(CP) -> dict[StrEnum, CANParser]:
-      return {Bus.pt: CarState.get_can_parser(CP),
-             Bus.cam: CarState.get_cam_can_parser(CP)}
-
-  @staticmethod
-  def get_cam_can_parser(CP):
-    signals = [
-      # sig_name, sig_address, default
-      ("LKAS_HUD", 20),
-      ("ACC_CMD_HUD", 20),
-      ("STEERING_LKAS", 40),
-      ("ACC_BRAKE", 20)
-    ]
-
-    return CANParser(DBC[CP.carFingerprint][Bus.pt], signals, 2)
+      return {
+        Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 0),
+        Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], 2)
+      }
