@@ -89,12 +89,14 @@ def psd_brake(apply_brake, last_pump):
 
   return pump, brake_req, last_pump
 
+
 # 100hz rate_limit
 def rate_limit_positive_speed(x, last):
   if x > last:
     return min(x, last + 0.006)
   else:
     return x
+
 
 class CarController(CarControllerBase):
   def __init__(self, dbc_names, CP):
