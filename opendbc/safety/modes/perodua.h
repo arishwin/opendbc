@@ -1,6 +1,6 @@
 #pragma once
 
-#include "opendbc/safety/safety_declarations.h"
+#include "opendbc/safety/declarations.h"
 
 static void perodua_rx_hook(const CANPacket_t *msg) {
   // Minimal state updates to align with openpilot's CarState
