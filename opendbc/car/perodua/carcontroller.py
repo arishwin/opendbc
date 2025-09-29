@@ -181,27 +181,6 @@ class CarController(CarControllerBase):
 
     # CAN controlled longitudinal
     if (self.frame % 5) == 0:
-
-      # check if need to revert to stock acc
-      if enabled and CS.out.vEgo > 10: # 36kmh
-        if CS.stock_acc_engaged:
-          self.using_stock_acc = True
-      else:
-        if enabled:
-          # spam engage until stock ACC engages
-          can_sends.append(perodua_buttons(self.packer, 0, 1, 0))
-
-      # check if need to revert to bukapilot acc
-      if CS.out.vEgo < 8.3: # 30kmh
-        self.using_stock_acc = False
-
-      # set stock acc follow speed
-      if enabled and self.using_stock_acc:
-        if CS.out.cruiseState.speedCluster - (CS.stock_acc_set_speed // 3.6) > 0.3:
-          can_sends.append(perodua_buttons(self.packer, 0, 1, 0))
-        if (CS.stock_acc_set_speed // 3.6) - CS.out.cruiseState.speedCluster > 0.3:
-          can_sends.append(perodua_buttons(self.packer, 1, 0, 0))
-
       # spam cancel if op cancel
       if pcm_cancel_cmd:
         can_sends.append(perodua_buttons(self.packer, 0, 0, 1))
