@@ -21,11 +21,6 @@ class PeroduaCarDocs(CarDocs):
   car_parts: CarParts = field(default_factory=CarParts.common([CarHarness.toyota_a]))
 
 
-class PeroduaFlags(IntFlag):
-  # Static flags
-  ACC = 1
-
-
 class CAR(Platforms):
   """
   For illustration, we create a PERODUA brand class with a single model:
