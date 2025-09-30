@@ -127,7 +127,6 @@ class CarController(CarControllerBase):
     can_sends = []
 
     # Use openpilot engagement for gating
-    enabled = CC.enabled
     lat_active = CC.latActive
     long_active = CC.longActive
     actuators = CC.actuators

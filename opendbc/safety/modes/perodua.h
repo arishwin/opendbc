@@ -31,20 +31,20 @@ static void perodua_rx_hook(const CANPacket_t *msg) {
   }
   vehicle_moving = true;
   controls_allowed = true;
-  UNUSED(msg);
+  SAFETY_UNUSED(msg);
 }
 
 static bool perodua_tx_hook(const CANPacket_t *msg) {
   bool tx = true;
   int len = GET_LEN(msg);
-  UNUSED(msg->addr);
-  UNUSED(len);
+  SAFETY_UNUSED(msg->addr);
+  SAFETY_UNUSED(len);
 
   return tx;
 }
 
 static safety_config perodua_init(uint16_t param) {
-  UNUSED(param);
+  SAFETY_UNUSED(param);
   static const CanMsg PERODUA_TX_MSGS[] = {
     {464, 0, 8, .check_relay = false},
     {628, 0, 8, .check_relay = false},

@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from enum import IntFlag
 
 from opendbc.car import CarSpecs, PlatformConfig, Platforms, DbcDict, Bus
 from opendbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
