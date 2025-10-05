@@ -6,7 +6,7 @@ from opendbc.car.perodua.peroduacan import create_can_steer_command, create_acce
                                        create_brake_command, create_hud
 from opendbc.car.perodua.values import DBC, CarControllerParams
 from numpy import clip, interp
-from opendbc.car import DT_CTRL, Bus
+from opendbc.car import DT_CTRL, Bus, make_tester_present_msg
 
 from bisect import bisect_left
 
@@ -17,6 +17,10 @@ PUMP_RESET_INTERVAL = 1.5
 PUMP_RESET_DURATION = 0.1
 
 BRAKE_M = 1.4
+
+CAMERA_BUS = 2
+CAMERA_DIAG_ADDR = 0x750
+CAMERA_SUB_ADDR = 0x0F
 
 
 class BrakingStatus:
@@ -122,6 +126,7 @@ class CarController(CarControllerBase):
     self.fingerprint = CP.carFingerprint
 
     self.last_des_speed = 0
+    self.keepalive_enabled = CP.openpilotLongitudinalControl
 
   def update(self, CC, CS, now_nanos):
     can_sends = []
@@ -206,6 +211,9 @@ class CarController(CarControllerBase):
       can_sends.append(create_hud(self.packer, CS.out.cruiseState.available and CS.lkas_latch, lat_active, llane_visible,
                                   rlane_visible, self.stockLdw, CS.out.stockFcw, CS.out.stockAeb, CS.frontDepartWarning,
                                   CS.stock_lkc_off, CS.stock_fcw_off))
+
+    if self.keepalive_enabled and (self.frame % 20) == 0:
+      can_sends.append(make_tester_present_msg(CAMERA_DIAG_ADDR, CAMERA_BUS, CAMERA_SUB_ADDR, suppress_response=True))
 
     self.last_steer = apply_steer
     new_actuators = actuators.as_builder()

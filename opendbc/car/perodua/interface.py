@@ -1,15 +1,42 @@
 #!/usr/bin/env python3
-from opendbc.car import structs
-from opendbc.car import get_safety_config
+from opendbc.car import get_safety_config, structs, uds
+from opendbc.car.disable_ecu import disable_ecu
 from opendbc.car.interfaces import CarInterfaceBase
 from opendbc.car.perodua.values import CAR
 from opendbc.car.perodua.carcontroller import CarController
 from opendbc.car.perodua.carstate import CarState
 
 
+CAMERA_BUS = 2
+CAMERA_DIAG_ADDR = 0x750
+CAMERA_SUB_ADDR = 0x0F
+_CAMERA_DISABLE_REQ = bytes([
+  uds.SERVICE_TYPE.COMMUNICATION_CONTROL,
+  uds.CONTROL_TYPE.ENABLE_RX_DISABLE_TX,
+  uds.MESSAGE_TYPE.NORMAL,
+])
+_CAMERA_ENABLE_REQ = bytes([
+  uds.SERVICE_TYPE.COMMUNICATION_CONTROL,
+  uds.CONTROL_TYPE.ENABLE_RX_ENABLE_TX,
+  uds.MESSAGE_TYPE.NORMAL,
+])
+
+
 class CarInterface(CarInterfaceBase):
   CarState = CarState
   CarController = CarController
+
+  @staticmethod
+  def init(CP, can_recv, can_send):
+    if CP.openpilotLongitudinalControl:
+      disable_ecu(can_recv, can_send, bus=CAMERA_BUS, addr=CAMERA_DIAG_ADDR,
+                  sub_addr=CAMERA_SUB_ADDR, com_cont_req=_CAMERA_DISABLE_REQ)
+
+  @staticmethod
+  def deinit(CP, can_recv, can_send):
+    if CP.openpilotLongitudinalControl:
+      disable_ecu(can_recv, can_send, bus=CAMERA_BUS, addr=CAMERA_DIAG_ADDR,
+                  sub_addr=CAMERA_SUB_ADDR, com_cont_req=_CAMERA_ENABLE_REQ)
 
   @staticmethod
   def _get_params(ret: structs.CarParams, candidate, fingerprint, car_fw, alpha_long, is_release, docs) -> structs.CarParams:
