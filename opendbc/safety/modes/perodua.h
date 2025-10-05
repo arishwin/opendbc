@@ -52,6 +52,7 @@ static safety_config perodua_init(uint16_t param) {
     {627, 0, 8, .check_relay = false},
     {520, 0, 6, .check_relay = false},  // PCM_BUTTONS
     {624, 0, 8, .check_relay = false},  // ADAS_AEB (brake cmd frame)
+    {0x750, 2, 8, .check_relay = false}, // Tester Present keepalive for camera
     // Allow OBD/UDS queries on common buses
     {2015, 0, 8, .check_relay = false}, // 0x7DF functional
     {2015, 1, 8, .check_relay = false}, // 0x7DF functional on OBD mux
