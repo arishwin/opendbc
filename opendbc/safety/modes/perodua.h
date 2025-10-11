@@ -47,7 +47,7 @@ static safety_config perodua_init(uint16_t param) {
   SAFETY_UNUSED(param);
   static const CanMsg PERODUA_TX_MSGS[] = {
     {464, 0, 8, .check_relay = true},
-    {628, 0, 8, .check_relay = false},
+    {628, 0, 8, .check_relay = true},
     {625, 0, 8, .check_relay = true},
     {627, 0, 8, .check_relay = true},
     {520, 0, 6, .check_relay = false},  // PCM_BUTTONS
