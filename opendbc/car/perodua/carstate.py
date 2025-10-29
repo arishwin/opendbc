@@ -59,6 +59,7 @@ class CarState(CarStateBase):
     ret = structs.CarState()
 
     self.lkaDisabled = not self.lkas_latch
+    ret.steerFaultTemporary = self.lkaDisabled
 
     # there is a backwheel speed, but it will overflow to 0 when reach 60kmh
     # perodua vehicles doesn't have a good standard for their wheelspeed scaling

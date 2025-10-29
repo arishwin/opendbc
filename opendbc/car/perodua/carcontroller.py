@@ -16,8 +16,6 @@ PUMP_VALS = [0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1.0]
 PUMP_RESET_INTERVAL = 1.5
 PUMP_RESET_DURATION = 0.1
 
-BRAKE_M = 1.4
-
 CAMERA_BUS = 2
 CAMERA_DIAG_ADDR = 0x750
 CAMERA_SUB_ADDR = 0x0F
@@ -75,31 +73,17 @@ def standstill_brake(min_accel, ts_last, ts_now, prev_status):
 
 
 def psd_brake(apply_brake, last_pump):
-  # reversed engineered from Ativa stock braking
-  # this is necessary for noiseless pump braking
+  """
+  Reverse-engineered PSD pump table behavior (noiseless braking).
+  Ensures pump steps change by <= 0.1 to minimize bleed.
+  """
   pump = PUMP_VALS[bisect_left(BRAKE_MAG, apply_brake)]
 
-  # make sure the pump value decrease and increases within 0.1
-  # to prevent brake bleeding.
-  # TODO does it really prevent brake bleed?
   if abs(pump - last_pump) > 0.1:
     pump = last_pump + clip(pump - last_pump, -0.1, 0.1)
-  last_pump = pump
 
-  if apply_brake >= BRAKE_THRESHOLD:
-    brake_req = 1
-  else:
-    brake_req = 0
-
-  return pump, brake_req, last_pump
-
-
-# 100hz rate_limit
-def rate_limit_positive_speed(x, last):
-  if x > last:
-    return min(x, last + 0.006)
-  else:
-    return x
+  brake_req = 1 if apply_brake >= BRAKE_THRESHOLD else 0
+  return pump, brake_req, pump  # new last_pump == pump
 
 
 class CarController(CarControllerBase):
@@ -124,8 +108,6 @@ class CarController(CarControllerBase):
 
     self.using_stock_acc = False
     self.fingerprint = CP.carFingerprint
-
-    self.last_des_speed = 0
     self.keepalive_enabled = CP.openpilotLongitudinalControl
 
   def update(self, CC, CS, now_nanos):
@@ -152,19 +134,10 @@ class CarController(CarControllerBase):
     # speed and brake, speed using simple kinematics v = u + at
     # because dnga is speed controlled, the PID for positive accel is done by the car
     # so we change the equation to v = u + ka and assume k include the time horizon of 1s
+    acceleration = (actuators.accel - CS.stock_brake_mag * 0.85) if CS.out.vEgo > 0.25 else actuators.accel
     k = 0.3 + 0.06 * CS.out.vEgo
-    des_speed = actuators.speed
-    apply_brake = 0 if (CS.out.gasPressed or actuators.accel >= 0) else clip(abs(actuators.accel / BRAKE_M), 0., 1.25)
-    apply_brake = max(CS.stock_brake_mag * 0.6, apply_brake)
-
-    if apply_brake > 0:
-      self.last_des_speed = CS.out.vEgo
-    else:
-      self.last_des_speed = des_speed
-
-    # positive des_speed rate limit
-    if CS.out.vEgo > 8.33:
-      des_speed = rate_limit_positive_speed(des_speed, self.last_des_speed)
+    des_speed = CS.out.vEgo + acceleration * k
+    apply_brake = 0 if (CS.out.gasPressed or acceleration >= 0.0) else clip(abs(acceleration * self.params.BRAKE_SCALE), 0., 1.25)
 
     # reduce max brake when below 10kmh to reduce jerk. TODO: more elegant way to do this?
     if CS.out.vEgo < 2.8:
@@ -180,7 +153,7 @@ class CarController(CarControllerBase):
       if self.stockLdw and not lat_active:
         apply_steer = -CS.ldpSteerV
 
-      steer_req = (lat_active or self.stockLdw) and CS.lkas_latch and not CS.lkaDisabled
+      steer_req = lat_active or self.stockLdw
       can_sends.append(create_can_steer_command(self.packer, apply_steer, steer_req, (self.frame / 2) % 16))
 
     # CAN controlled longitudinal
@@ -190,7 +163,7 @@ class CarController(CarControllerBase):
         can_sends.append(perodua_buttons(self.packer, 0, 0, 1))
 
       # standstill logic
-      if long_active and apply_brake > 0 and CS.out.standstill:
+      if long_active and apply_brake > 0.0 and CS.out.standstill:
         if self.standstill_status == BrakingStatus.STANDSTILL_INIT:
           self.min_standstill_accel = apply_brake + 0.2
         apply_brake, self.standstill_status, self.prev_ts = standstill_brake(self.min_standstill_accel, self.prev_ts, ts, self.standstill_status)
@@ -218,6 +191,8 @@ class CarController(CarControllerBase):
     self.last_steer = apply_steer
     new_actuators = actuators.as_builder()
     new_actuators.torque = apply_steer / self.params.STEER_MAX
+    # sometimes we let stock brake, brake takes precedence over gas
+    new_actuators.accel = actuators.accel - apply_brake if actuators.accel > 0 else actuators.accel
 
     self.frame += 1
     return new_actuators, can_sends
