@@ -39,7 +39,7 @@ class CarControllerParams:
     self.STEER_STEP = 4  # TODO: check if need change
     self.STEER_BP = CP.lateralParams.torqueBP
     self.STEER_LIM_TORQ = CP.lateralParams.torqueV
-    self.BRAKE_SCALE = 0.714
+    self.BRAKE_SCALE = 3.3
 
     # for torque limit calculation
     self.STEER_DELTA_UP = 10
