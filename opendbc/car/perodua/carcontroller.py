@@ -18,10 +18,6 @@ PUMP_RESET_DURATION = 0.1
 
 BRAKE_M = 1.4
 
-CAMERA_BUS = 2
-CAMERA_DIAG_ADDR = 0x750
-CAMERA_SUB_ADDR = 0x0F
-
 
 class BrakingStatus:
   STANDSTILL_INIT = 0
@@ -211,9 +207,6 @@ class CarController(CarControllerBase):
       can_sends.append(create_hud(self.packer, CS.out.cruiseState.available and CS.lkas_latch, lat_active, llane_visible,
                                   rlane_visible, self.stockLdw, CS.out.stockFcw, CS.out.stockAeb, CS.frontDepartWarning,
                                   CS.stock_lkc_off, CS.stock_fcw_off))
-
-    if self.keepalive_enabled and (self.frame % 20) == 0:
-      can_sends.append(make_tester_present_msg(CAMERA_DIAG_ADDR, CAMERA_BUS, CAMERA_SUB_ADDR, suppress_response=True))
 
     self.last_steer = apply_steer
     new_actuators = actuators.as_builder()
