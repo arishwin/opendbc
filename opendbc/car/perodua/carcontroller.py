@@ -6,7 +6,7 @@ from opendbc.car.perodua.peroduacan import create_can_steer_command, create_acce
                                        create_brake_command, create_hud
 from opendbc.car.perodua.values import DBC, CarControllerParams
 from numpy import clip, interp
-from opendbc.car import DT_CTRL, Bus, make_tester_present_msg
+from opendbc.car import DT_CTRL, Bus
 
 from bisect import bisect_left
 
