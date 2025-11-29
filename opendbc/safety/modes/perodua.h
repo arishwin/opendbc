@@ -6,22 +6,22 @@ static void perodua_rx_hook(const CANPacket_t *msg) {
   // Minimal state updates to align with openpilot's CarState
 
   // Brake pressed from BRAKE (161) bit 5
-  if ((msg->addr == 161) && (msg->bus == 0)) {
+  if ((msg->addr == 161U) && (msg->bus == 0U)) {
     brake_pressed = GET_BIT(msg, 5U);
   }
 
   // Gas pressed from GAS_PEDAL_2 (399) bit 1, pressed when 0
-  if ((msg->addr == 399) && (msg->bus == 0)) {
+  if ((msg->addr == 399U) && (msg->bus == 0U)) {
     gas_pressed = !GET_BIT(msg, 1U);
   }
 
   // Fallback gas from PCM_BUTTONS (520) PEDAL_DEPRESSED at bit 12
-  if ((msg->addr == 520) && (msg->bus == 0)) {
+  if ((msg->addr == 520U) && (msg->bus == 0U)) {
     gas_pressed = GET_BIT(msg, 12U);
   }
 
   // ACC availability and engagement from ACC_CMD_HUD (627) on cam bus 2
-  if ((msg->addr == 627) && (msg->bus == 2)) {
+  if ((msg->addr == 627U) && (msg->bus == 2U)) {
     acc_main_on = GET_BIT(msg, 9U);  // SET_ME_1_2
     // consider any non-zero ACC_CMD as engaged (allow controls)
     uint16_t acc_cmd = (uint16_t)(GET_BYTES(msg, 2, 2) & 0xFFFFU);
