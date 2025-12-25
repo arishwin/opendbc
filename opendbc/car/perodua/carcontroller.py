@@ -160,8 +160,8 @@ class CarController(CarControllerBase):
       self.last_des_speed = des_speed
 
     # positive des_speed rate limit
-    if CS.out.vEgo > 8.33:
-      des_speed = rate_limit_positive_speed(des_speed, self.last_des_speed)
+    # if CS.out.vEgo > 8.33:
+    #   des_speed = rate_limit_positive_speed(des_speed, self.last_des_speed)
 
     # reduce max brake when below 10kmh to reduce jerk. TODO: more elegant way to do this?
     if CS.out.vEgo < 2.8:
