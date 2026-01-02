@@ -199,7 +199,7 @@ class CarController(CarControllerBase):
       pump, brake_req, self.last_pump = psd_brake(apply_brake, self.last_pump)
 
       can_sends.append(create_accel_command(self.packer, CS.out.cruiseState.speedCluster,
-                       True, long_active, lead_visible,
+                       CS.out.cruiseState.available, long_active, lead_visible,
                        des_speed, apply_brake, pump, CS.distance_val))
 
       # Let stock AEB kick in only when system not engaged
