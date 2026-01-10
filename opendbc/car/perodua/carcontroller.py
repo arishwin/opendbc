@@ -149,7 +149,12 @@ class CarController(CarControllerBase):
     # because dnga is speed controlled, the PID for positive accel is done by the car
     # use a fixed lookahead to convert accel (m/s^2) to a target speed (m/s)
     # piecewise lookahead to keep low-speed response while allowing stronger ramp at higher speeds
-    speed_lookahead_s = 1.0 if CS.out.vEgo <= 2.90 else 1.3
+    if CS.out.vEgo >= 3.5:
+      speed_lookahead_s = 1.6
+    elif CS.out.vEgo >= 2.9:
+      speed_lookahead_s = 1.4
+    else:
+      speed_lookahead_s = 1.0
     acceleration = (actuators.accel - CS.stock_brake_mag * 0.85) if CS.out.vEgo > 0.25 else actuators.accel
     des_speed = CS.out.vEgo + acceleration * speed_lookahead_s
     apply_brake = 0 if (CS.out.gasPressed or actuators.accel >= 0) else clip(abs(actuators.accel / BRAKE_M), 0., 1.25)
