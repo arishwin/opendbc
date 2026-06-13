@@ -1,12 +1,28 @@
 from dataclasses import dataclass, field
 
+from numpy import interp
+
 from opendbc.car import CarSpecs, PlatformConfig, Platforms, DbcDict, Bus
 from opendbc.car.fw_query_definitions import FwQueryConfig, Request, StdQueries
 from opendbc.car.structs import CarParams
 from opendbc.car.docs_definitions import CarDocs, CarParts, CarHarness
 
 HUD_MULTIPLIER = 1.04
+
+# The cluster (and the ACC ECU's internal speed used to track ACC_CMD) reads above true
+# wheel speed. ACC_CMD must be sent in this cluster scale and the driver's set speed
+# converted out of it, with the same ratio in both directions so the loop is consistent:
+# at steady state ACC_CMD == SET_SPEED == the ECU's internal speed.
+# Breakpoints take vEgo in m/s and keep the historical Myvi calibration: over the real
+# 0-40 m/s range this evaluates to ~1.061 down to ~1.049.
+CLUSTER_SPEED_RATIO_BP = [0., 140.]
+CLUSTER_SPEED_RATIO_V = [1.0615, 1.0170]
+
 Ecu = CarParams.Ecu
+
+
+def cluster_speed_ratio(v_ego: float) -> float:
+  return float(interp(v_ego, CLUSTER_SPEED_RATIO_BP, CLUSTER_SPEED_RATIO_V))
 
 
 @dataclass

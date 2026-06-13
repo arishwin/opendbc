@@ -2,11 +2,10 @@ from enum import StrEnum
 
 from opendbc.can.parser import CANParser
 from opendbc.can import CANDefine
-from numpy import interp
 from opendbc.car.common.conversions import Conversions as CV
 from opendbc.car import create_button_events, Bus, structs
 from opendbc.car.interfaces import CarStateBase
-from opendbc.car.perodua.values import DBC, HUD_MULTIPLIER
+from opendbc.car.perodua.values import DBC, HUD_MULTIPLIER, cluster_speed_ratio
 from time import time # existing infra to reuse?
 
 from opendbc.car.perodua.values import CarControllerParams
@@ -189,7 +188,7 @@ class CarState(CarStateBase):
     # set speed in range of 30 - 140kmh only
     self.cruise_speed = max(min(self.cruise_speed, 140 * CV.KPH_TO_MS), 30 * CV.KPH_TO_MS)
     ret.cruiseState.speedCluster = self.cruise_speed
-    ret.cruiseState.speed = ret.cruiseState.speedCluster / float(interp(ret.vEgo, [0,140], [1.0615,1.0170]))
+    ret.cruiseState.speed = ret.cruiseState.speedCluster / cluster_speed_ratio(ret.vEgo)
 
     ret.cruiseState.standstill = False
     ret.cruiseState.nonAdaptive = False

@@ -65,7 +65,9 @@ def create_accel_command(packer, set_speed, acc_rdy, enabled, is_lead, des_speed
     "SET_ME_1": 1,
     "SET_0_WHEN_ENGAGE": not enabled,
     "SET_1_WHEN_ENGAGE": enabled,
-    "ACC_CMD": des_speed * CV.MS_TO_KPH if enabled else 0,
+    # the packer wraps negative values into huge unsigned ones (a -1 kph target would
+    # encode as ~654 kph), so clamp to the valid command range
+    "ACC_CMD": clip(des_speed * CV.MS_TO_KPH, 0., 145.) if enabled else 0,
   }
 
   return packer.make_can_msg("ACC_CMD_HUD", 0, values)

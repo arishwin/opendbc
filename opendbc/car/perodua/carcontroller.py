@@ -4,7 +4,7 @@ from opendbc.car.can_definitions import CanData
 from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.perodua.peroduacan import create_can_steer_command, create_accel_command, perodua_buttons,\
                                        create_brake_command, create_hud
-from opendbc.car.perodua.values import DBC, CarControllerParams
+from opendbc.car.perodua.values import DBC, CarControllerParams, cluster_speed_ratio
 from numpy import clip, interp
 from opendbc.car import DT_CTRL, Bus
 
@@ -17,6 +17,12 @@ PUMP_RESET_INTERVAL = 1.5
 PUMP_RESET_DURATION = 0.1
 
 BRAKE_M = 1.4
+
+# the ECU responds to the gap between ACC_CMD and its internal speed, so the lookahead sets
+# how much speed error one m/s^2 of requested accel produces. A bigger error is needed at
+# higher speed to make the ECU downshift / open the throttle against the reduced engine headroom.
+SPEED_LOOKAHEAD_BP = [0., 2.9, 8.3, 16.7, 27.8]  # m/s
+SPEED_LOOKAHEAD_V = [1.0, 1.2, 1.4, 1.6, 1.8]    # s
 
 
 class BrakingStatus:
@@ -147,16 +153,17 @@ class CarController(CarControllerBase):
 
     # speed and brake, speed using simple kinematics v = u + at
     # because dnga is speed controlled, the PID for positive accel is done by the car
-    # use a fixed lookahead to convert accel (m/s^2) to a target speed (m/s)
-    # piecewise lookahead to keep low-speed response while allowing stronger ramp at higher speeds
-    if CS.out.vEgo >= 3.5:
-      speed_lookahead_s = 1.6
-    elif CS.out.vEgo >= 2.9:
-      speed_lookahead_s = 1.4
-    else:
-      speed_lookahead_s = 1.0
+    # use a speed-dependent lookahead to convert accel (m/s^2) to a target speed (m/s)
+    speed_lookahead_s = float(interp(CS.out.vEgo, SPEED_LOOKAHEAD_BP, SPEED_LOOKAHEAD_V))
     acceleration = (actuators.accel - CS.stock_brake_mag * 0.85) if CS.out.vEgo > 0.25 else actuators.accel
-    des_speed = CS.out.vEgo + acceleration * speed_lookahead_s
+    des_speed = max(CS.out.vEgo + acceleration * speed_lookahead_s, 0.)
+
+    # the ECU tracks ACC_CMD against its internal cluster-scale speed, which reads ~5% above
+    # wheel speed. Sent in wheel-speed scale the command carries a speed-proportional deficit
+    # (~5 kph at 100 km/h) that swallows the accel request, so convert the target into the
+    # cluster scale. Uses the same ratio as the set-speed conversion in carstate so that at
+    # steady state ACC_CMD == SET_SPEED.
+    acc_cmd_speed = des_speed * cluster_speed_ratio(CS.out.vEgo)
     apply_brake = 0 if (CS.out.gasPressed or actuators.accel >= 0) else clip(abs(actuators.accel / BRAKE_M), 0., 1.25)
     apply_brake = max(CS.stock_brake_mag * 0.6, apply_brake)
 
@@ -206,7 +213,7 @@ class CarController(CarControllerBase):
 
       can_sends.append(create_accel_command(self.packer, CS.out.cruiseState.speedCluster,
                        CS.out.cruiseState.available, long_active, lead_visible,
-                       des_speed, apply_brake, pump, CS.distance_val))
+                       acc_cmd_speed, apply_brake, pump, CS.distance_val))
 
       # Let stock AEB kick in only when system not engaged
       aeb = not long_active and CS.aebV
