@@ -278,6 +278,7 @@ class TestFwFingerprintTiming(unittest.TestCase):
       'volkswagen': 0.65,
       'rivian': 0.3,
       'psa': 0.1,
+      'perodua': 0.1,
     }
 
     total_times = 0.0

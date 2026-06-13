@@ -12,6 +12,7 @@ from opendbc.car.rivian.values import CAR as RIVIAN
 from opendbc.car.subaru.values import CAR as SUBARU
 from opendbc.car.toyota.values import CAR as TOYOTA
 from opendbc.car.volkswagen.values import CAR as VW
+from opendbc.car.perodua.values import CAR as PERODUA
 
 FW_VERSIONS = get_interface_attr('FW_VERSIONS', combine_brands=True, ignore_none=True)
 _FINGERPRINTS = get_interface_attr('FINGERPRINTS', combine_brands=True, ignore_none=True)
@@ -336,6 +337,7 @@ MIGRATION = {
   "SKODA SUPERB 3RD GEN": VW.SKODA_SUPERB_MK3,
   "RIVIAN_R1_GEN1": RIVIAN.RIVIAN_R1,
   "RIVIAN_R1_GEN2": RIVIAN.RIVIAN_R1,
+  "PERODUA MYVI AV": PERODUA.MYVI,
 
   "mock": MOCK.MOCK,
 }
