@@ -45,6 +45,7 @@ class CarState(CarStateBase):
     self.frontDepartWarning = 0
     self.ldpSteerV = 0
     self.aebV = 0
+    self.long_accel = 0.0  # measured longitudinal accel (KINEMATICS 0x1F0 / GVC analogue), m/s^2
 
     self.distance_button = 0
     self.lkaDisabled = 0
@@ -69,6 +70,10 @@ class CarState(CarStateBase):
     ret.vEgoRaw = (rr + rl + fr + fl) * 0.25
     ret.vEgo, ret.aEgo = self.update_speed_kf(ret.vEgoRaw)
     ret.standstill = ret.vEgoRaw < 0.01
+
+    # measured longitudinal acceleration from the chassis G-sensor (KINEMATICS 0x1F0, PT bus,
+    # the Daihatsu analogue of Toyota GVC). Used as closed-loop accel feedback in the controller.
+    self.long_accel = float(cp.vl["KINEMATICS"]["LONG_ACCEL"])
 
     # safety checks to engage
     can_gear = int(cp.vl["TRANSMISSION"]['GEAR'])

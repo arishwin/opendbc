@@ -5,6 +5,7 @@ from opendbc.car.interfaces import CarControllerBase
 from opendbc.car.perodua.peroduacan import create_can_steer_command, create_accel_command, perodua_buttons,\
                                        create_brake_command, create_hud
 from opendbc.car.perodua.values import DBC, CarControllerParams, cluster_speed_ratio
+from opendbc.car.common.pid import PIDController
 from numpy import clip, interp
 from opendbc.car import DT_CTRL, Bus
 from opendbc.car.common.conversions import Conversions as CV
@@ -34,6 +35,20 @@ GAP_GAIN_BP = [1.5, 4.2, 8.3, 13.9, 19.4, 30.6]   # m/s  (~5,15,30,50,70,110 km/
 GAP_GAIN_V  = [5.,  10., 22., 38.,  55.,  90.]      # kph of gap per (m/s^2)
 GAP_DEADBAND_KPH = 4.0     # base gap to clear the ECU deadband when accel intent>0
 LEAD_GAP_CAP_KPH = 12.0    # cap commanded gap when a lead is visible (preserve fine following)
+
+# Closed-loop accel correction wrapping the open-loop gap-inversion above. Feedback is the measured
+# longitudinal accel (KINEMATICS 0x1F0, the Daihatsu GVC analogue). The integral of
+# (target - measured) accel is added to the feedforward accel request, then inverted through
+# GAP_GAIN to a gap. Expressing the correction in accel units keeps the loop gain ~speed-invariant
+# (GAP_GAIN cancels the plant DC gain). Integral-dominant (kp=0), like the Toyota long PID.
+# CONSERVATIVE start gains: an offline sim can't verify closed-loop stability against the real
+# plant, so these are intentionally gentle - tune up on-car.
+LONG_ACCEL_KP = 0.0
+LONG_ACCEL_KI = 0.5
+ACCEL_REQ_MAX = 5.0    # m/s^2 ceiling on the (feedforward + integral) accel request; the REAL command
+                       # bound is the downstream set-speed-headroom clip, so keep this high enough that
+                       # it doesn't artificially throttle the integral (FF alone is ~a_target ~2)
+A_MEAS_TAU = 0.20      # s, low-pass time constant on the measured accel
 
 
 class BrakingStatus:
@@ -141,6 +156,12 @@ class CarController(CarControllerBase):
     self.last_des_speed = 0
     self.keepalive_enabled = CP.openpilotLongitudinalControl
 
+    # closed-loop longitudinal accel correction
+    self.a_meas = 0.0
+    self._long_sat = False
+    self.long_pid = PIDController(LONG_ACCEL_KP, LONG_ACCEL_KI, k_f=1.0,
+                                  pos_limit=ACCEL_REQ_MAX, neg_limit=0.0, rate=int(1 / DT_CTRL))
+
   def update(self, CC, CS, now_nanos):
     can_sends = []
 
@@ -166,16 +187,31 @@ class CarController(CarControllerBase):
     # only responds to a sizeable gap between ACC_CMD and its internal speed. Size the gap from the
     # inverted transfer and clip to the set speed (strong request -> target near set speed, ECU ramps).
     acceleration = (actuators.accel - CS.stock_brake_mag * 0.85) if CS.out.vEgo > 0.25 else actuators.accel
+    # measured longitudinal accel feedback (KINEMATICS 0x1F0), low-pass filtered
+    self.a_meas += (DT_CTRL / A_MEAS_TAU) * (CS.long_accel - self.a_meas)
     if acceleration > 0.:
       gain = float(interp(CS.out.vEgo, GAP_GAIN_BP, GAP_GAIN_V))   # kph of gap per m/s^2
-      gap_kph = GAP_DEADBAND_KPH + gain * acceleration
-      if lead_visible:                       # behind a lead stay gentle; lean on the brake path
-        gap_kph = min(gap_kph, LEAD_GAP_CAP_KPH)
+      # closed loop: integrate (target - measured) accel onto the feedforward accel request, then
+      # invert through the transfer to a speed gap. Freeze the integrator when the command is
+      # already saturated (set-speed headroom or lead cap) or while long is inactive.
+      accel_req = float(self.long_pid.update(acceleration - self.a_meas, feedforward=acceleration,
+                                             freeze_integrator=self._long_sat or not long_active))
+      gap_kph = GAP_DEADBAND_KPH + gain * accel_req
+      sat = False
+      if lead_visible and gap_kph > LEAD_GAP_CAP_KPH:   # behind a lead stay gentle; lean on the brake
+        gap_kph = LEAD_GAP_CAP_KPH
+        sat = True
       set_speed_kph = CS.out.cruiseState.speedCluster * CV.MS_TO_KPH
-      gap_kph = float(clip(gap_kph, 0., max(0., set_speed_kph - CS.out.vEgo * CV.MS_TO_KPH)))
-      # plain float: capnp actuators.speed rejects numpy scalars (clip/interp return numpy)
+      headroom_kph = max(0., set_speed_kph - CS.out.vEgo * CV.MS_TO_KPH)
+      if gap_kph > headroom_kph:
+        gap_kph = headroom_kph
+        sat = True
+      self._long_sat = sat
+      # plain float: capnp actuators.speed rejects numpy scalars (clip/interp/pid return numpy)
       des_speed = float(CS.out.vEgo + gap_kph * CV.KPH_TO_MS)
     else:
+      self.long_pid.reset()
+      self._long_sat = False
       speed_lookahead_s = float(interp(CS.out.vEgo, SPEED_LOOKAHEAD_BP, SPEED_LOOKAHEAD_V))
       des_speed = max(CS.out.vEgo + acceleration * speed_lookahead_s, 0.)
 
