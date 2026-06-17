@@ -7,7 +7,6 @@ from opendbc.car.perodua.peroduacan import create_can_steer_command, create_acce
 from opendbc.car.perodua.values import DBC, CarControllerParams, cluster_speed_ratio
 from numpy import clip, interp
 from opendbc.car import DT_CTRL, Bus
-from opendbc.car.common.conversions import Conversions as CV
 
 from bisect import bisect_left
 
@@ -24,17 +23,6 @@ BRAKE_M = 1.4
 # higher speed to make the ECU downshift / open the throttle against the reduced engine headroom.
 SPEED_LOOKAHEAD_BP = [0., 2.9, 8.3, 16.7, 27.8]  # m/s
 SPEED_LOOKAHEAD_V = [1.0, 1.2, 1.4, 1.6, 1.8]    # s
-
-# Transfer-inversion gap controller (replaces the lookahead for positive accel).
-# kph of (ACC_CMD - vEgo) speed gap to command per 1 m/s^2 of requested accel. The DNGA ACC
-# ECU is a weak speed servo: measured on route 4abf798c.../000000ee it needs ~30-40 kph of gap
-# to deliver ~1 m/s^2 at city speed, and its authority halves roughly every 13 kph. These invert
-# that transfer. The 70/110 km/h points are EXTRAPOLATED (no highway log yet) - refit before
-# trusting high-speed pull.
-GAP_GAIN_BP = [2.8, 7.0, 11.0, 19.4, 30.6]   # m/s  (~10, 25, 40, 70, 110 km/h)
-GAP_GAIN_V  = [13.,  20.,  31.,  55.,  90.]   # kph of gap per (m/s^2)
-GAP_DEADBAND_KPH = 6.0     # base gap to clear the ECU deadband when accel intent>0
-LEAD_GAP_CAP_KPH = 12.0    # cap commanded gap when a lead is visible (preserve fine following)
 
 
 class BrakingStatus:
@@ -163,23 +151,12 @@ class CarController(CarControllerBase):
 
     ts = self.frame * DT_CTRL
 
-    # speed and brake. dnga is speed controlled: the positive-accel PID is done by the car, which
-    # only responds to a sizeable gap between ACC_CMD and its internal speed. The old lookahead
-    # (des = v + a*T, T<=1.8s) only ever asked for ~6 kph per m/s^2, so the ECU saw a tiny gap and
-    # delivered ~0. Size the gap from the inverted transfer instead and clip to the set speed, so a
-    # strong accel request commands a target near set speed and lets the ECU ramp.
+    # speed and brake, speed using simple kinematics v = u + at
+    # because dnga is speed controlled, the PID for positive accel is done by the car
+    # use a speed-dependent lookahead to convert accel (m/s^2) to a target speed (m/s)
+    speed_lookahead_s = float(interp(CS.out.vEgo, SPEED_LOOKAHEAD_BP, SPEED_LOOKAHEAD_V))
     acceleration = (actuators.accel - CS.stock_brake_mag * 0.85) if CS.out.vEgo > 0.25 else actuators.accel
-    if acceleration > 0.:
-      gain = float(interp(CS.out.vEgo, GAP_GAIN_BP, GAP_GAIN_V))   # kph of gap per m/s^2
-      gap_kph = GAP_DEADBAND_KPH + gain * acceleration
-      if lead_visible:                       # behind a lead stay gentle; lean on the brake path
-        gap_kph = min(gap_kph, LEAD_GAP_CAP_KPH)
-      set_speed_kph = CS.out.cruiseState.speedCluster * CV.MS_TO_KPH
-      gap_kph = clip(gap_kph, 0., max(0., set_speed_kph - CS.out.vEgo * CV.MS_TO_KPH))
-      des_speed = CS.out.vEgo + gap_kph * CV.KPH_TO_MS
-    else:
-      speed_lookahead_s = float(interp(CS.out.vEgo, SPEED_LOOKAHEAD_BP, SPEED_LOOKAHEAD_V))
-      des_speed = max(CS.out.vEgo + acceleration * speed_lookahead_s, 0.)
+    des_speed = max(CS.out.vEgo + acceleration * speed_lookahead_s, 0.)
 
     # the ECU tracks ACC_CMD against its internal cluster-scale speed, which reads ~5% above
     # wheel speed. Sent in wheel-speed scale the command carries a speed-proportional deficit
