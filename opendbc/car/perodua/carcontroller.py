@@ -50,6 +50,17 @@ ACCEL_REQ_MAX = 5.0    # m/s^2 ceiling on the (feedforward + integral) accel req
                        # it doesn't artificially throttle the integral (FF alone is ~a_target ~2)
 A_MEAS_TAU = 0.20      # s, low-pass time constant on the measured accel
 
+# Low-speed jerk fixes (diagnosed on routes 00000100/101: launch + 5-20 km/h is where felt jerk lives,
+# and it is OUR command, not ECU tip-in). At launch the gap-inversion lands des_speed as a near-instant
+# step (74-105 kph/s) the ECU chases into a ~2.6 m/s^2 spike (un-commanded creep launches are smooth
+# ~1.0). Slew the RISING speed command below LAUNCH_SLEW_VEGO so the deadband floor ramps in instead of
+# stepping. And the closed-loop integral pumps the command faster at low speed (raises jerk), so bleed it
+# out below LOWSPEED_KI_OFF. The ~0.9-1.0 mean|jerk| floor below this is plant-intrinsic (ECU servo
+# decoupled at R2~0.01 + driveline lash) and is NOT reachable from the speed command - do not chase it.
+LAUNCH_SLEW_VEGO = 20.0 * CV.KPH_TO_MS   # only slew the rising command below 20 km/h
+LAUNCH_SLEW_KPH_S = 20.0                  # max rise rate of the speed command at launch/low speed
+LOWSPEED_KI_OFF = 18.0 * CV.KPH_TO_MS    # unwind the closed-loop integral below 18 km/h (anti-windup)
+
 
 class BrakingStatus:
   STANDSTILL_INIT = 0
@@ -195,6 +206,8 @@ class CarController(CarControllerBase):
       # invert through the transfer to a speed gap. Freeze the integrator when the command is
       # already saturated (set-speed headroom or lead cap) or while long is inactive.
       accel_req = float(self.long_pid.update(acceleration - self.a_meas, feedforward=acceleration,
+                                             speed=CS.out.vEgo,
+                                             override=CS.out.vEgo < LOWSPEED_KI_OFF,
                                              freeze_integrator=self._long_sat or not long_active))
       gap_kph = GAP_DEADBAND_KPH + gain * accel_req
       sat = False
@@ -214,6 +227,12 @@ class CarController(CarControllerBase):
       self._long_sat = False
       speed_lookahead_s = float(interp(CS.out.vEgo, SPEED_LOOKAHEAD_BP, SPEED_LOOKAHEAD_V))
       des_speed = max(CS.out.vEgo + acceleration * speed_lookahead_s, 0.)
+
+    # launch / low-speed slew: cap the RISE rate of the speed command below ~20 km/h so the gap-inversion
+    # does not land as a near-instant step the ECU chases into a jerky spike. Only limits rising commands;
+    # decel/coast is unaffected. plain float() - capnp actuators.speed rejects numpy scalars.
+    if CS.out.vEgo < LAUNCH_SLEW_VEGO and des_speed > self.last_des_speed:
+      des_speed = float(min(des_speed, self.last_des_speed + (LAUNCH_SLEW_KPH_S * CV.KPH_TO_MS) * DT_CTRL))
 
     # the ECU tracks ACC_CMD against its internal cluster-scale speed, which reads ~5% above
     # wheel speed. Sent in wheel-speed scale the command carries a speed-proportional deficit
