@@ -35,6 +35,8 @@ GAP_GAIN_BP = [1.5, 4.2, 8.3, 13.9, 19.4, 30.6]   # m/s  (~5,15,30,50,70,110 km/
 GAP_GAIN_V  = [5.,  10., 22., 38.,  55.,  90.]      # kph of gap per (m/s^2)
 GAP_DEADBAND_KPH = 4.0     # base gap to clear the ECU deadband when accel intent>0
 LEAD_GAP_CAP_KPH = 12.0    # cap commanded gap when a lead is visible (preserve fine following)
+LOWSPEED_GAP_CAP_BP = [0., 5.0, 10.0, 20.0, 30.0]   # kph
+LOWSPEED_GAP_CAP_V = [3.0, 5.0, 8.0, 14.0, 30.0]    # max positive ACC_CMD-vEgo gap, kph
 
 # Closed-loop accel correction wrapping the open-loop gap-inversion above. Feedback is the measured
 # longitudinal accel (KINEMATICS 0x1F0, the Daihatsu GVC analogue). The integral of
@@ -53,12 +55,14 @@ A_MEAS_TAU = 0.20      # s, low-pass time constant on the measured accel
 # Low-speed jerk fixes (diagnosed on routes 00000100/101: launch + 5-20 km/h is where felt jerk lives,
 # and it is OUR command, not ECU tip-in). At launch the gap-inversion lands des_speed as a near-instant
 # step (74-105 kph/s) the ECU chases into a ~2.6 m/s^2 spike (un-commanded creep launches are smooth
-# ~1.0). Slew the RISING speed command below LAUNCH_SLEW_VEGO so the deadband floor ramps in instead of
-# stepping. And the closed-loop integral pumps the command faster at low speed (raises jerk), so bleed it
-# out below LOWSPEED_KI_OFF. The ~0.9-1.0 mean|jerk| floor below this is plant-intrinsic (ECU servo
+# ~1.0). Route 00000104 still showed a re-engage at 8-15 km/h building a 14-16 kph gap in
+# under a second, followed by a measured accel spike and brake correction. Cap the low-speed gap and
+# slew the RISING speed command below LAUNCH_SLEW_VEGO so the deadband floor ramps in instead of
+# stepping. And the closed-loop integral pumps the command faster at low speed (raises jerk), so bleed
+# it out below LOWSPEED_KI_OFF. The ~0.9-1.0 mean|jerk| floor below this is plant-intrinsic (ECU servo
 # decoupled at R2~0.01 + driveline lash) and is NOT reachable from the speed command - do not chase it.
-LAUNCH_SLEW_VEGO = 20.0 * CV.KPH_TO_MS   # only slew the rising command below 20 km/h
-LAUNCH_SLEW_KPH_S = 20.0                  # max rise rate of the speed command at launch/low speed
+LAUNCH_SLEW_VEGO = 30.0 * CV.KPH_TO_MS   # only slew the rising command below 30 km/h
+LAUNCH_SLEW_KPH_S = 12.0                  # max rise rate of the speed command at launch/low speed
 LOWSPEED_KI_OFF = 18.0 * CV.KPH_TO_MS    # unwind the closed-loop integral below 18 km/h (anti-windup)
 
 
@@ -214,6 +218,11 @@ class CarController(CarControllerBase):
       if lead_visible and gap_kph > LEAD_GAP_CAP_KPH:   # behind a lead stay gentle; lean on the brake
         gap_kph = LEAD_GAP_CAP_KPH
         sat = True
+      v_ego_kph = CS.out.vEgo * CV.MS_TO_KPH
+      low_speed_gap_cap = float(interp(v_ego_kph, LOWSPEED_GAP_CAP_BP, LOWSPEED_GAP_CAP_V))
+      if v_ego_kph < LOWSPEED_GAP_CAP_BP[-1] and gap_kph > low_speed_gap_cap:
+        gap_kph = low_speed_gap_cap
+        sat = True
       set_speed_kph = CS.out.cruiseState.speedCluster * CV.MS_TO_KPH
       headroom_kph = max(0., set_speed_kph - CS.out.vEgo * CV.MS_TO_KPH)
       if gap_kph > headroom_kph:
@@ -228,7 +237,7 @@ class CarController(CarControllerBase):
       speed_lookahead_s = float(interp(CS.out.vEgo, SPEED_LOOKAHEAD_BP, SPEED_LOOKAHEAD_V))
       des_speed = max(CS.out.vEgo + acceleration * speed_lookahead_s, 0.)
 
-    # launch / low-speed slew: cap the RISE rate of the speed command below ~20 km/h so the gap-inversion
+    # launch / low-speed slew: cap the RISE rate of the speed command below ~30 km/h so the gap-inversion
     # does not land as a near-instant step the ECU chases into a jerky spike. Only limits rising commands;
     # decel/coast is unaffected. plain float() - capnp actuators.speed rejects numpy scalars.
     if CS.out.vEgo < LAUNCH_SLEW_VEGO and des_speed > self.last_des_speed:
