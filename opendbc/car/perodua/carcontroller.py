@@ -240,7 +240,7 @@ class CarController(CarControllerBase):
     # launch / low-speed slew: cap the RISE rate of the speed command below ~30 km/h so the gap-inversion
     # does not land as a near-instant step the ECU chases into a jerky spike. Only limits rising commands;
     # decel/coast is unaffected. plain float() - capnp actuators.speed rejects numpy scalars.
-    if CS.out.vEgo < LAUNCH_SLEW_VEGO and des_speed > self.last_des_speed:
+    if long_active and acceleration > 0. and CS.out.vEgo < LAUNCH_SLEW_VEGO and des_speed > self.last_des_speed:
       des_speed = float(min(des_speed, self.last_des_speed + (LAUNCH_SLEW_KPH_S * CV.KPH_TO_MS) * DT_CTRL))
 
     # the ECU tracks ACC_CMD against its internal cluster-scale speed, which reads ~5% above
